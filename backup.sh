@@ -43,7 +43,7 @@ log "=== BACKUP START ==="
 
 # ========= MIGRATIONS =========
 
-run_step "Local root .config sync" /usr/sbin/rsync -a --delete /root/.config/ /root/linux-all/git/config-files/root.config/
+run_step "Local root .config sync" /usr/sbin/rsync -a --delete /root/.config/ /root/linux-all/git/config-files/root/.config/
 run_step "Local fstab sync" /usr/sbin/rsync -a --delete /etc/fstab /root/linux-all/git/config-files/etc/fstab
 run_step "Local motd sync" /usr/sbin/rsync -a --delete /etc/motd /root/linux-all/git/config-files/etc/motd
 run_step "Local dnf sync" /usr/sbin/rsync -a --delete /etc/dnf/ /root/linux-all/git/config-files/etc/dnf/
