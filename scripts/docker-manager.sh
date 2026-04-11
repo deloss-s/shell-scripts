@@ -551,7 +551,7 @@ compose_choose_service() {
 }
 
 all_up() {
-    print_section "1.2" "Containers › Up all"
+    print_section "1.3" "Containers › Up all"
     info "Starting all services via docker-compose.yml..."
     echo ""
     local failed=0
@@ -575,7 +575,7 @@ all_up() {
 }
 
 all_down() {
-    print_section "1.3" "Containers › Down all"
+    print_section "1.4" "Containers › Down all"
     echo -ne "  ${RED}Stop ALL services? (y/n):${NC} "
     read confirm
     [ "$confirm" != "y" ] && {
@@ -603,12 +603,129 @@ all_down() {
     pause
 }
 
+compose_create() {
+    print_section "1.4" "Containers › Create new service (docker-compose.yml)"
+
+    echo -ne "  Service name (will be folder name in docker/): "
+    read svc_name
+    [ -z "$svc_name" ] && {
+        warn "Name cannot be empty"
+        pause
+        return
+    }
+
+    local svc_dir="$DOCKER_ROOT/$svc_name"
+    if [ -d "$svc_dir" ]; then
+        fail "Directory already exists: $svc_dir"
+        pause
+        return
+    fi
+
+    mkdir -p "$svc_dir"
+    local compose_file="$svc_dir/docker-compose.yml"
+    cat >"$compose_file" <<COMPEOF
+services:
+  ${svc_name}:
+    image: 
+    container_name: ${svc_name}
+    restart: unless-stopped
+    volumes:
+      - ${svc_dir}/config:/config
+    ports:
+      - "8080:8080"
+COMPEOF
+
+    ok "Created $svc_dir"
+    echo -e "  ${YELLOW}Opening docker-compose.yml in nvim...${NC}\n"
+    nvim "$compose_file"
+    pause
+}
+
+compose_delete() {
+    print_section "1.5" "Containers › Delete service"
+
+    local services=()
+    while IFS= read -r d; do
+        [ -n "$d" ] && services+=("$d")
+    done < <(get_services)
+
+    if [ ${#services[@]} -eq 0 ]; then
+        warn "No services found"
+        pause
+        return
+    fi
+
+    local i=1
+    for d in "${services[@]}"; do
+        local name
+        name=$(basename "$d")
+        local compose
+        compose=$(get_compose_file "$d")
+        local running
+        running=$(docker compose -f "$compose" ps -q 2>/dev/null | wc -l)
+        local status_str
+        [ "$running" -gt 0 ] &&
+            status_str=" ${GREEN}● up ($running)${NC}" ||
+            status_str=" ${RED}○ down${NC}"
+        printf "  ${RED}%2d.${NC} %-25s%b\n" "$i" "$name" "$status_str"
+        ((i++))
+    done
+    echo -e "  ${YELLOW}  0.${NC} Cancel"
+    echo ""
+    read -p "  Select service to delete: " choice
+    [ "$choice" = "0" ] && return
+
+    local idx=$((choice - 1))
+    local target="${services[$idx]}"
+    [ -z "$target" ] && {
+        echo -e "\n  ${RED}Invalid${NC}"
+        pause
+        return
+    }
+
+    local name
+    name=$(basename "$target")
+
+    echo ""
+    echo -e "  ${BOLD}What will happen:${NC}"
+    echo -e "  ${RED}•${NC} docker compose down for ${BOLD}$name${NC}"
+    echo -e "  ${RED}•${NC} Delete entire directory: $target"
+    echo ""
+    echo -ne "  ${RED}Type 'delete' to confirm:${NC} "
+    read confirm
+    [ "$confirm" != "delete" ] && {
+        echo -e "\n  ${YELLOW}Cancelled.${NC}"
+        pause
+        return
+    }
+
+    echo ""
+    local compose
+    compose=$(get_compose_file "$target")
+    if [ -n "$compose" ]; then
+        info "Stopping containers..."
+        cd "$target" && docker compose down 2>/dev/null &&
+            ok "Containers stopped" ||
+            warn "Could not stop containers (may already be down)"
+    fi
+
+    info "Deleting $target..."
+    rm -rf "$target" &&
+        ok "$name deleted" ||
+        fail "Failed to delete directory"
+
+    pause
+}
+
 menu_containers() {
     while true; do
         print_section "1" "Containers & docker-compose.yml"
         echo -e "  ${GREEN}1.${NC} Choose service"
         echo -e "  ${GREEN}2.${NC} Up all (docker-compose.yml)"
         echo -e "  ${RED}3.${NC} Down all (docker-compose.yml)"
+        echo -e "  ${GREEN}4.${NC} Create new service (docker-compose.yml)"
+        echo -e "  ${RED}5.${NC} Delete service"
+        echo -e "  ${CYAN}6.${NC} Junk"
         echo -e "  ${YELLOW}0.${NC} Back"
         echo ""
         read -p "  Choice: " c
@@ -616,6 +733,9 @@ menu_containers() {
         1) compose_choose_service ;;
         2) all_up ;;
         3) all_down ;;
+        4) compose_create ;;
+        5) compose_delete ;;
+        6) menu_junk ;;
         0) return ;;
         *) echo -e "  ${RED}Invalid${NC}" && sleep 1 ;;
         esac
@@ -627,7 +747,7 @@ menu_containers() {
 # ─────────────────────────────────────────
 
 junk_list() {
-    print_section "2.1" "Junk › List"
+    print_section "1.6.1" "Junk › List"
     echo -e "  ${YELLOW}$JUNK_DIR${NC}\n"
 
     local found=0
@@ -650,7 +770,7 @@ junk_list() {
 }
 
 junk_move_to() {
-    print_section "2.2" "Junk › Move to junk"
+    print_section "1.6.2" "Junk › Move to junk"
 
     local services=()
     while IFS= read -r d; do
@@ -743,7 +863,7 @@ junk_move_to() {
 }
 
 junk_move_from() {
-    print_section "2.3" "Junk › Move from junk"
+    print_section "1.6.3" "Junk › Move from junk"
 
     local junked=()
     for dir in "$JUNK_DIR"/*/; do
@@ -804,7 +924,7 @@ junk_move_from() {
 
 menu_junk() {
     while true; do
-        print_section "2" "Junk"
+        print_section "1.6" "Junk"
         echo -e "  ${GREEN}1.${NC} List junk services"
         echo -e "  ${RED}2.${NC} Move to junk"
         echo -e "  ${GREEN}3.${NC} Move from junk"
@@ -830,15 +950,13 @@ menu_junk() {
 while true; do
     print_header
     echo -e "  ${CYAN}1.${NC} Containers & docker-compose.yml"
-    echo -e "  ${CYAN}2.${NC} Junk"
-    echo -e "  ${CYAN}3.${NC} Images"
+    echo -e "  ${CYAN}2.${NC} Images"
     echo -e "  ${YELLOW}0.${NC} Exit"
     echo ""
     read -p "  Choice: " choice
     case $choice in
     1) menu_containers ;;
-    2) menu_junk ;;
-    3) menu_images ;;
+    2) menu_images ;;
     0) echo "" && exit 0 ;;
     *) echo -e "  ${RED}Invalid choice${NC}" && sleep 1 ;;
     esac
