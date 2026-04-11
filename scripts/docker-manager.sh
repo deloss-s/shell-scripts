@@ -99,7 +99,7 @@ pick_service() {
         local running_count
         running_count=$(docker compose -f "$compose" ps -q 2>/dev/null | wc -l)
         if [ "$running_count" -gt 0 ]; then
-            status_str=" ${GREEN}● up${NC}"
+            status_str=" ${GREEN}● up ($running_count)${NC}"
         else
             status_str=" ${RED}○ down${NC}"
         fi
@@ -266,7 +266,7 @@ service_up() {
     name=$(basename "$dir")
     local compose
     compose=$(get_compose_file "$dir")
-    print_section "2.3.1" "Service › $name › Up (docker-compose.yml)"
+    print_section "2.4.1" "Service › $name › Up (docker-compose.yml)"
     info "Starting $name..."
     cd "$dir" && docker compose up -d
     echo ""
@@ -280,7 +280,7 @@ service_down() {
     name=$(basename "$dir")
     local compose
     compose=$(get_compose_file "$dir")
-    print_section "2.3.2" "Service › $name › Down (docker-compose.yml)"
+    print_section "2.4.2" "Service › $name › Down (docker-compose.yml)"
     echo -ne "  ${RED}Stop $name? (y/n):${NC} "
     read confirm
     [ "$confirm" != "y" ] && {
@@ -297,7 +297,7 @@ service_restart() {
     local dir=$1
     local name
     name=$(basename "$dir")
-    print_section "2.3.3" "Service › $name › Restart (docker-compose.yml)"
+    print_section "2.4.3" "Service › $name › Restart (docker-compose.yml)"
     info "Restarting $name..."
     cd "$dir" && docker compose restart
     echo ""
@@ -309,7 +309,7 @@ service_logs() {
     local dir=$1
     local name
     name=$(basename "$dir")
-    print_section "2.3.4" "Service › $name › Logs (docker-compose.yml)"
+    print_section "2.4.4" "Service › $name › Logs (docker-compose.yml)"
     info "Showing last 50 lines (q to exit)"
     echo ""
     cd "$dir" && docker compose logs --tail=50 --follow
@@ -320,7 +320,7 @@ service_status() {
     local dir=$1
     local name
     name=$(basename "$dir")
-    print_section "2.3.5" "Service › $name › Status (docker-compose.yml)"
+    print_section "2.4.5" "Service › $name › Status (docker-compose.yml)"
     echo ""
     cd "$dir" && docker compose ps
     pause
@@ -330,7 +330,7 @@ service_pull() {
     local dir=$1
     local name
     name=$(basename "$dir")
-    print_section "2.3.6" "Service › $name › Pull & recreate (docker-compose.yml)"
+    print_section "2.4.6" "Service › $name › Pull & recreate (docker-compose.yml)"
     echo -ne "  Pull new images and recreate containers for $name? (y/n): "
     read confirm
     [ "$confirm" != "y" ] && {
@@ -348,111 +348,206 @@ service_pull() {
 }
 
 service_edit() {
-    local dir=$1
+    local root_dir=$1
     local name
-    name=$(basename "$dir")
-    print_section "2.3.7" "Service › $name › Edit configuration"
-
-    # Список всех файлов в директории сервиса (не рекурсивно)
-    local files=()
-    while IFS= read -r f; do
-        [ -f "$f" ] && files+=("$f")
-    done < <(find "$dir" -maxdepth 1 -type f | sort)
-
-    if [ ${#files[@]} -eq 0 ]; then
-        warn "No files found in $dir"
-        pause
-        return
-    fi
-
-    local i=1
-    for f in "${files[@]}"; do
-        local fname
-        fname=$(basename "$f")
-        echo -e "  ${GREEN}$i.${NC} $fname"
-        ((i++))
-    done
-    echo -e "  ${YELLOW}0.${NC} Cancel"
-    echo ""
-    read -p "  Select file to edit: " choice
-    [ "$choice" = "0" ] && return
-
-    local idx=$((choice - 1))
-    local target="${files[$idx]}"
-    [ -z "$target" ] && {
-        echo -e "\n  ${RED}Invalid${NC}"
-        pause
-        return
-    }
-
-    echo -e "\n  ${YELLOW}Opening $(basename "$target") in nvim...${NC}\n"
-    nvim "$target"
-
-    echo ""
-    local compose
-    compose=$(get_compose_file "$dir")
-    if [ -n "$compose" ]; then
-        read -p "  Restart service to apply changes? (y/n): " restart
-        if [ "$restart" = "y" ]; then
-            cd "$dir" && docker compose restart
-            ok "Restarted"
-        fi
-    fi
-    pause
-}
-
-menu_service() {
-    local dir=$1
-    local name
-    name=$(basename "$dir")
+    name=$(basename "$root_dir")
+    local current_dir="$root_dir"
 
     while true; do
-        print_section "2.3" "Service › $name"
+        print_section "2.4.7" "Service › $name › Edit configuration"
+        echo -e "  ${YELLOW}$current_dir${NC}\n"
 
-        # Статус контейнеров
-        local compose
-        compose=$(get_compose_file "$dir")
-        local running
-        running=$(docker compose -f "$compose" ps -q 2>/dev/null | wc -l)
-        if [ "$running" -gt 0 ]; then
-            echo -e "  Status: ${GREEN}● up ($running containers)${NC}"
+        local entries=()
+        local entry_types=()
+
+        local show_back=0
+        [ "$current_dir" != "$root_dir" ] && show_back=1
+
+        if [ $show_back -eq 1 ]; then
+            echo -e "  ${CYAN}0.${NC} .. (back)"
         else
-            echo -e "  Status: ${RED}○ down${NC}"
+            echo -e "  ${YELLOW}0.${NC} Cancel"
         fi
-        echo ""
 
-        echo -e "  ${GREEN}1.${NC} Up (docker-compose.yml)"
-        echo -e "  ${GREEN}2.${NC} Down (docker-compose.yml)"
-        echo -e "  ${GREEN}3.${NC} Restart (docker-compose.yml)"
-        echo -e "  ${GREEN}4.${NC} Logs"
-        echo -e "  ${GREEN}5.${NC} Status"
-        echo -e "  ${GREEN}6.${NC} Pull & recreate (docker-compose.yml)"
-        echo -e "  ${GREEN}7.${NC} Edit configuration"
-        echo -e "  ${YELLOW}0.${NC} Back"
+        local i=1
+        # Директории
+        while IFS= read -r d; do
+            [ -z "$d" ] && continue
+            echo -e "  ${CYAN}$i.${NC} $(basename "$d")/"
+            entries+=("$d")
+            entry_types+=("dir")
+            ((i++))
+        done < <(find "$current_dir" -mindepth 1 -maxdepth 1 -type d | sort)
+
+        # Файлы
+        while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            echo -e "  ${GREEN}$i.${NC} $(basename "$f")"
+            entries+=("$f")
+            entry_types+=("file")
+            ((i++))
+        done < <(find "$current_dir" -mindepth 1 -maxdepth 1 -type f | sort)
+
         echo ""
-        read -p "  Choice: " c
-        case $c in
-        1) service_up "$dir" ;;
-        2) service_down "$dir" ;;
-        3) service_restart "$dir" ;;
-        4) service_logs "$dir" ;;
-        5) service_status "$dir" ;;
-        6) service_pull "$dir" ;;
-        7) service_edit "$dir" ;;
-        0) return ;;
-        *) echo -e "  ${RED}Invalid${NC}" && sleep 1 ;;
-        esac
+        echo -e "  ${CYAN}n.${NC} New file"
+        echo -e "  ${RED}d.${NC} Delete file"
+        echo ""
+        read -p "  Select (number / n / d / 0): " choice
+
+        # Назад / отмена
+        if [ "$choice" = "0" ]; then
+            if [ $show_back -eq 1 ]; then
+                current_dir=$(dirname "$current_dir")
+            else
+                return
+            fi
+            continue
+        fi
+
+        # Создать новый файл
+        if [ "$choice" = "n" ] || [ "$choice" = "N" ]; then
+            echo -ne "\n  File name: "
+            read new_fname
+            [ -z "$new_fname" ] && {
+                warn "Name cannot be empty"
+                sleep 1
+                continue
+            }
+            local new_path="$current_dir/$new_fname"
+            if [ -e "$new_path" ]; then
+                warn "Already exists: $new_fname"
+                sleep 1
+                continue
+            fi
+            touch "$new_path"
+            ok "Created $new_fname"
+            sleep 0.5
+            nvim "$new_path"
+            continue
+        fi
+
+        # Удалить файл
+        if [ "$choice" = "d" ] || [ "$choice" = "D" ]; then
+            if [ ${#entries[@]} -eq 0 ]; then
+                warn "Nothing to delete"
+                sleep 1
+                continue
+            fi
+            echo ""
+            echo -e "  ${RED}Select file to delete:${NC}\n"
+            local j=1
+            local del_entries=()
+            for e in "${entries[@]}"; do
+                local etype="${entry_types[$((j - 1))]}"
+                [ "$etype" = "file" ] || {
+                    ((j++))
+                    continue
+                }
+                echo -e "  ${RED}$j.${NC} $(basename "$e")"
+                del_entries+=("$e")
+                ((j++))
+            done
+            [ ${#del_entries[@]} -eq 0 ] && {
+                warn "No files to delete (directories not deletable here)"
+                sleep 1
+                continue
+            }
+            echo -e "  ${YELLOW}0.${NC} Cancel"
+            echo ""
+            read -p "  Select: " del_choice
+            [ "$del_choice" = "0" ] && continue
+            local del_idx=$((del_choice - 1))
+            local del_target="${del_entries[$del_idx]:-}"
+            [ -z "$del_target" ] && {
+                echo -e "\n  ${RED}Invalid${NC}"
+                sleep 1
+                continue
+            }
+            echo ""
+            echo -ne "  ${RED}Delete $(basename "$del_target")? (y/n):${NC} "
+            read del_confirm
+            [ "$del_confirm" != "y" ] && continue
+            rm -f "$del_target" && ok "Deleted $(basename "$del_target")" || fail "Failed to delete"
+            sleep 1
+            continue
+        fi
+
+        # Выбор по номеру
+        local idx=$((choice - 1))
+        local target="${entries[$idx]:-}"
+        local ttype="${entry_types[$idx]:-}"
+        [ -z "$target" ] && {
+            echo -e "\n  ${RED}Invalid${NC}"
+            sleep 1
+            continue
+        }
+
+        if [ "$ttype" = "dir" ]; then
+            current_dir="$target"
+        else
+            echo -e "\n  ${YELLOW}Opening $(basename "$target") in nvim...${NC}\n"
+            nvim "$target"
+            echo ""
+            local compose
+            compose=$(get_compose_file "$root_dir")
+            if [ -n "$compose" ]; then
+                read -p "  Restart service to apply changes? (y/n): " restart
+                if [ "$restart" = "y" ]; then
+                    cd "$root_dir" && docker compose restart
+                    ok "Restarted"
+                fi
+            fi
+        fi
     done
 }
 
 compose_choose_service() {
-    print_section "2.3" "Containers › Choose service (docker-compose.yml)"
     local selected_dir=""
-    pick_service selected_dir || {
-        pause
-        return
-    }
-    menu_service "$selected_dir"
+
+    while true; do
+        print_section "2.4" "Containers › Choose service (docker-compose.yml)"
+        pick_service selected_dir || return
+
+        # Остаёмся в цикле выбора сервиса — menu_service возвращает сюда
+        while true; do
+            local name
+            name=$(basename "$selected_dir")
+            local compose
+            compose=$(get_compose_file "$selected_dir")
+            local running
+            running=$(docker compose -f "$compose" ps -q 2>/dev/null | wc -l)
+
+            print_section "2.4" "Service › $name"
+            if [ "$running" -gt 0 ]; then
+                echo -e "  Status: ${GREEN}● up ($running containers)${NC}"
+            else
+                echo -e "  Status: ${RED}○ down${NC}"
+            fi
+            echo ""
+            echo -e "  ${GREEN}1.${NC} Up (docker-compose.yml)"
+            echo -e "  ${GREEN}2.${NC} Down (docker-compose.yml)"
+            echo -e "  ${GREEN}3.${NC} Restart (docker-compose.yml)"
+            echo -e "  ${GREEN}4.${NC} Logs"
+            echo -e "  ${GREEN}5.${NC} Status"
+            echo -e "  ${GREEN}6.${NC} Pull & recreate (docker-compose.yml)"
+            echo -e "  ${GREEN}7.${NC} Edit configuration"
+            echo -e "  ${YELLOW}0.${NC} Back to service list"
+            echo ""
+            read -p "  Choice: " c
+            case $c in
+            1) service_up "$selected_dir" ;;
+            2) service_down "$selected_dir" ;;
+            3) service_restart "$selected_dir" ;;
+            4) service_logs "$selected_dir" ;;
+            5) service_status "$selected_dir" ;;
+            6) service_pull "$selected_dir" ;;
+            7) service_edit "$selected_dir" ;;
+            0) break ;;
+            *) echo -e "  ${RED}Invalid${NC}" && sleep 1 ;;
+            esac
+        done
+        # После break — возвращаемся к pick_service
+    done
 }
 
 all_up() {
@@ -511,18 +606,215 @@ all_down() {
 menu_containers() {
     while true; do
         print_section "2" "Containers & docker-compose.yml"
-        echo -e "  ${GREEN}1.${NC} List services (docker-compose.yml)"
+        echo -e "  ${GREEN}1.${NC} Choose service"
         echo -e "  ${GREEN}2.${NC} Up all (docker-compose.yml)"
         echo -e "  ${RED}3.${NC} Down all (docker-compose.yml)"
-        echo -e "  ${GREEN}4.${NC} Choose service"
         echo -e "  ${YELLOW}0.${NC} Back"
         echo ""
         read -p "  Choice: " c
         case $c in
-        1) compose_list_files ;;
+        1) compose_choose_service ;;
         2) all_up ;;
         3) all_down ;;
-        4) compose_choose_service ;;
+        0) return ;;
+        *) echo -e "  ${RED}Invalid${NC}" && sleep 1 ;;
+        esac
+    done
+}
+
+# ─────────────────────────────────────────
+# 3. Junk
+# ─────────────────────────────────────────
+
+junk_list() {
+    print_section "3.1" "Junk › List"
+    echo -e "  ${YELLOW}$JUNK_DIR${NC}\n"
+
+    local found=0
+    for dir in "$JUNK_DIR"/*/; do
+        [ -d "$dir" ] || continue
+        local name
+        name=$(basename "$dir")
+        local compose
+        compose=""
+        [ -f "$dir/docker-compose.yml" ] && compose="docker-compose.yml"
+        [ -f "$dir/docker-compose.yaml" ] && compose="docker-compose.yaml"
+        local compose_str
+        [ -n "$compose" ] && compose_str="${CYAN}$compose${NC}" || compose_str="${RED}no docker-compose.yml${NC}"
+        printf "  ${YELLOW}•${NC} %-25s %b\n" "$name" "$compose_str"
+        found=1
+    done
+
+    [ $found -eq 0 ] && warn "Junk is empty"
+    pause
+}
+
+junk_move_to() {
+    print_section "3.2" "Junk › Move to junk"
+
+    local services=()
+    while IFS= read -r d; do
+        [ -n "$d" ] && services+=("$d")
+    done < <(get_services)
+
+    if [ ${#services[@]} -eq 0 ]; then
+        warn "No services found"
+        pause
+        return
+    fi
+
+    local i=1
+    for d in "${services[@]}"; do
+        local name
+        name=$(basename "$d")
+        local compose
+        compose=$(get_compose_file "$d")
+        local running
+        running=$(docker compose -f "$compose" ps -q 2>/dev/null | wc -l)
+        local status_str
+        [ "$running" -gt 0 ] &&
+            status_str=" ${GREEN}● up ($running)${NC}" ||
+            status_str=" ${RED}○ down${NC}"
+        printf "  ${RED}%2d.${NC} %-25s%b\n" "$i" "$name" "$status_str"
+        ((i++))
+    done
+    echo -e "  ${YELLOW}  0.${NC} Cancel"
+    echo ""
+    read -p "  Select service to move to junk: " choice
+    [ "$choice" = "0" ] && return
+
+    local idx=$((choice - 1))
+    local target="${services[$idx]}"
+    [ -z "$target" ] && {
+        echo -e "\n  ${RED}Invalid${NC}"
+        pause
+        return
+    }
+
+    local name
+    name=$(basename "$target")
+
+    echo ""
+    echo -e "  ${BOLD}What will happen:${NC}"
+    echo -e "  ${RED}•${NC} docker compose down for ${BOLD}$name${NC}"
+    echo -e "  ${RED}•${NC} Delete images used by $name"
+    echo -e "  ${RED}•${NC} Move $target → $JUNK_DIR/$name"
+    echo ""
+    echo -ne "  ${RED}Confirm? (y/n):${NC} "
+    read confirm
+    [ "$confirm" != "y" ] && {
+        echo -e "\n  Cancelled."
+        pause
+        return
+    }
+
+    echo ""
+
+    # Down контейнеров
+    local compose
+    compose=$(get_compose_file "$target")
+    if [ -n "$compose" ]; then
+        info "Stopping containers..."
+        cd "$target" && docker compose down 2>/dev/null &&
+            ok "Containers stopped" ||
+            warn "Could not stop containers (may already be down)"
+    fi
+
+    # Удалить образы сервиса
+    info "Removing images..."
+    local images
+    images=$(docker compose -f "$compose" images -q 2>/dev/null)
+    if [ -n "$images" ]; then
+        echo "$images" | xargs docker rmi -f 2>/dev/null &&
+            ok "Images removed" ||
+            warn "Some images could not be removed"
+    else
+        warn "No images found for this service"
+    fi
+
+    # Переместить директорию
+    info "Moving $name to junk..."
+    mkdir -p "$JUNK_DIR"
+    mv "$target" "$JUNK_DIR/$name" &&
+        ok "$name moved to $JUNK_DIR/$name" ||
+        fail "Failed to move directory"
+
+    pause
+}
+
+junk_move_from() {
+    print_section "3.3" "Junk › Move from junk"
+
+    local junked=()
+    for dir in "$JUNK_DIR"/*/; do
+        [ -d "$dir" ] && junked+=("$dir")
+    done
+
+    if [ ${#junked[@]} -eq 0 ]; then
+        warn "Junk is empty"
+        pause
+        return
+    fi
+
+    local i=1
+    for d in "${junked[@]}"; do
+        local name
+        name=$(basename "$d")
+        echo -e "  ${GREEN}$i.${NC} $name"
+        ((i++))
+    done
+    echo -e "  ${YELLOW}0.${NC} Cancel"
+    echo ""
+    read -p "  Select service to restore: " choice
+    [ "$choice" = "0" ] && return
+
+    local idx=$((choice - 1))
+    local target="${junked[$idx]}"
+    [ -z "$target" ] && {
+        echo -e "\n  ${RED}Invalid${NC}"
+        pause
+        return
+    }
+
+    local name
+    name=$(basename "$target")
+
+    # Проверить что такой папки нет в docker/
+    if [ -d "$DOCKER_ROOT/$name" ]; then
+        fail "Directory $DOCKER_ROOT/$name already exists"
+        pause
+        return
+    fi
+
+    echo ""
+    echo -ne "  Move ${BOLD}$name${NC} back to $DOCKER_ROOT/? (y/n): "
+    read confirm
+    [ "$confirm" != "y" ] && {
+        echo -e "\n  Cancelled."
+        pause
+        return
+    }
+
+    mv "$target" "$DOCKER_ROOT/$name" &&
+        ok "$name restored to $DOCKER_ROOT/$name" ||
+        fail "Failed to move directory"
+
+    pause
+}
+
+menu_junk() {
+    while true; do
+        print_section "3" "Junk"
+        echo -e "  ${GREEN}1.${NC} List junk services"
+        echo -e "  ${RED}2.${NC} Move to junk"
+        echo -e "  ${GREEN}3.${NC} Move from junk"
+        echo -e "  ${YELLOW}0.${NC} Back"
+        echo ""
+        read -p "  Choice: " c
+        case $c in
+        1) junk_list ;;
+        2) junk_move_to ;;
+        3) junk_move_from ;;
         0) return ;;
         *) echo -e "  ${RED}Invalid${NC}" && sleep 1 ;;
         esac
@@ -538,13 +830,15 @@ menu_containers() {
 while true; do
     print_header
     echo -e "  ${CYAN}1.${NC} Images"
-    echo -e "  ${CYAN}2.${NC} Containers & Compose"
+    echo -e "  ${CYAN}2.${NC} Containers & docker-compose.yml"
+    echo -e "  ${CYAN}3.${NC} Junk"
     echo -e "  ${YELLOW}0.${NC} Exit"
     echo ""
     read -p "  Choice: " choice
     case $choice in
     1) menu_images ;;
     2) menu_containers ;;
+    3) menu_junk ;;
     0) echo "" && exit 0 ;;
     *) echo -e "  ${RED}Invalid choice${NC}" && sleep 1 ;;
     esac
