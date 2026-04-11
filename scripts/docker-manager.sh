@@ -129,7 +129,7 @@ pick_service() {
 # ─────────────────────────────────────────
 
 images_list() {
-    print_section "1.1" "Images › List"
+    print_section "3.1" "Images › List"
     echo ""
     docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}" |
         awk 'NR==1 {printf "  %-40s %-15s %-10s %s\n", $1, $2, $3, $4} NR>1 {printf "  %-40s %-15s %-10s %s\n", $1, $2, $3, $4}'
@@ -137,7 +137,7 @@ images_list() {
 }
 
 images_delete() {
-    print_section "1.2" "Images › Delete image"
+    print_section "3.2" "Images › Delete image"
 
     local images=()
     while IFS= read -r line; do
@@ -193,7 +193,7 @@ images_delete() {
 
 menu_images() {
     while true; do
-        print_section "1" "Images"
+        print_section "3" "Images"
         echo -e "  ${GREEN}1.${NC} List images"
         echo -e "  ${RED}2.${NC} Delete image"
         echo -e "  ${YELLOW}0.${NC} Back"
@@ -213,7 +213,7 @@ menu_images() {
 # ─────────────────────────────────────────
 
 compose_list_files() {
-    print_section "2.1" "Containers › List services (docker-compose.yml)"
+    print_section "1.1" "Containers › List services (docker-compose.yml)"
     echo -e "  ${YELLOW}$DOCKER_ROOT${NC}  (junk excluded)\n"
 
     local found=0
@@ -244,7 +244,7 @@ compose_list_files() {
 }
 
 compose_list_running() {
-    print_section "2.2" "Containers › Running containers"
+    print_section "1.2" "Containers › Running containers"
     echo ""
     local count
     count=$(docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" | wc -l)
@@ -266,7 +266,7 @@ service_up() {
     name=$(basename "$dir")
     local compose
     compose=$(get_compose_file "$dir")
-    print_section "2.4.1" "Service › $name › Up (docker-compose.yml)"
+    print_section "1.1.1" "Service › $name › Up (docker-compose.yml)"
     info "Starting $name..."
     cd "$dir" && docker compose up -d
     echo ""
@@ -280,7 +280,7 @@ service_down() {
     name=$(basename "$dir")
     local compose
     compose=$(get_compose_file "$dir")
-    print_section "2.4.2" "Service › $name › Down (docker-compose.yml)"
+    print_section "1.1.2" "Service › $name › Down (docker-compose.yml)"
     echo -ne "  ${RED}Stop $name? (y/n):${NC} "
     read confirm
     [ "$confirm" != "y" ] && {
@@ -297,7 +297,7 @@ service_restart() {
     local dir=$1
     local name
     name=$(basename "$dir")
-    print_section "2.4.3" "Service › $name › Restart (docker-compose.yml)"
+    print_section "1.1.3" "Service › $name › Restart (docker-compose.yml)"
     info "Restarting $name..."
     cd "$dir" && docker compose restart
     echo ""
@@ -309,7 +309,7 @@ service_logs() {
     local dir=$1
     local name
     name=$(basename "$dir")
-    print_section "2.4.4" "Service › $name › Logs (docker-compose.yml)"
+    print_section "1.1.4" "Service › $name › Logs (docker-compose.yml)"
     info "Showing last 50 lines (q to exit)"
     echo ""
     cd "$dir" && docker compose logs --tail=50 --follow
@@ -320,7 +320,7 @@ service_status() {
     local dir=$1
     local name
     name=$(basename "$dir")
-    print_section "2.4.5" "Service › $name › Status (docker-compose.yml)"
+    print_section "1.1.5" "Service › $name › Status (docker-compose.yml)"
     echo ""
     cd "$dir" && docker compose ps
     pause
@@ -330,7 +330,7 @@ service_pull() {
     local dir=$1
     local name
     name=$(basename "$dir")
-    print_section "2.4.6" "Service › $name › Pull & recreate (docker-compose.yml)"
+    print_section "1.1.6" "Service › $name › Pull & recreate (docker-compose.yml)"
     echo -ne "  Pull new images and recreate containers for $name? (y/n): "
     read confirm
     [ "$confirm" != "y" ] && {
@@ -354,7 +354,7 @@ service_edit() {
     local current_dir="$root_dir"
 
     while true; do
-        print_section "2.4.7" "Service › $name › Edit configuration"
+        print_section "1.1.7" "Service › $name › Edit configuration"
         echo -e "  ${YELLOW}$current_dir${NC}\n"
 
         local entries=()
@@ -505,7 +505,7 @@ compose_choose_service() {
     local selected_dir=""
 
     while true; do
-        print_section "2.4" "Containers › Choose service (docker-compose.yml)"
+        print_section "1.1" "Containers › Choose service"
         pick_service selected_dir || return
 
         # Остаёмся в цикле выбора сервиса — menu_service возвращает сюда
@@ -517,7 +517,7 @@ compose_choose_service() {
             local running
             running=$(docker compose -f "$compose" ps -q 2>/dev/null | wc -l)
 
-            print_section "2.4" "Service › $name"
+            print_section "1.1" "Service › $name"
             if [ "$running" -gt 0 ]; then
                 echo -e "  Status: ${GREEN}● up ($running containers)${NC}"
             else
@@ -551,7 +551,7 @@ compose_choose_service() {
 }
 
 all_up() {
-    print_section "2.2" "Containers › Up all"
+    print_section "1.2" "Containers › Up all"
     info "Starting all services via docker-compose.yml..."
     echo ""
     local failed=0
@@ -575,7 +575,7 @@ all_up() {
 }
 
 all_down() {
-    print_section "2.3" "Containers › Down all"
+    print_section "1.3" "Containers › Down all"
     echo -ne "  ${RED}Stop ALL services? (y/n):${NC} "
     read confirm
     [ "$confirm" != "y" ] && {
@@ -605,7 +605,7 @@ all_down() {
 
 menu_containers() {
     while true; do
-        print_section "2" "Containers & docker-compose.yml"
+        print_section "1" "Containers & docker-compose.yml"
         echo -e "  ${GREEN}1.${NC} Choose service"
         echo -e "  ${GREEN}2.${NC} Up all (docker-compose.yml)"
         echo -e "  ${RED}3.${NC} Down all (docker-compose.yml)"
@@ -627,7 +627,7 @@ menu_containers() {
 # ─────────────────────────────────────────
 
 junk_list() {
-    print_section "3.1" "Junk › List"
+    print_section "2.1" "Junk › List"
     echo -e "  ${YELLOW}$JUNK_DIR${NC}\n"
 
     local found=0
@@ -650,7 +650,7 @@ junk_list() {
 }
 
 junk_move_to() {
-    print_section "3.2" "Junk › Move to junk"
+    print_section "2.2" "Junk › Move to junk"
 
     local services=()
     while IFS= read -r d; do
@@ -743,7 +743,7 @@ junk_move_to() {
 }
 
 junk_move_from() {
-    print_section "3.3" "Junk › Move from junk"
+    print_section "2.3" "Junk › Move from junk"
 
     local junked=()
     for dir in "$JUNK_DIR"/*/; do
@@ -804,7 +804,7 @@ junk_move_from() {
 
 menu_junk() {
     while true; do
-        print_section "3" "Junk"
+        print_section "2" "Junk"
         echo -e "  ${GREEN}1.${NC} List junk services"
         echo -e "  ${RED}2.${NC} Move to junk"
         echo -e "  ${GREEN}3.${NC} Move from junk"
@@ -829,16 +829,16 @@ menu_junk() {
 
 while true; do
     print_header
-    echo -e "  ${CYAN}1.${NC} Images"
-    echo -e "  ${CYAN}2.${NC} Containers & docker-compose.yml"
-    echo -e "  ${CYAN}3.${NC} Junk"
+    echo -e "  ${CYAN}1.${NC} Containers & docker-compose.yml"
+    echo -e "  ${CYAN}2.${NC} Junk"
+    echo -e "  ${CYAN}3.${NC} Images"
     echo -e "  ${YELLOW}0.${NC} Exit"
     echo ""
     read -p "  Choice: " choice
     case $choice in
-    1) menu_images ;;
-    2) menu_containers ;;
-    3) menu_junk ;;
+    1) menu_containers ;;
+    2) menu_junk ;;
+    3) menu_images ;;
     0) echo "" && exit 0 ;;
     *) echo -e "  ${RED}Invalid choice${NC}" && sleep 1 ;;
     esac
