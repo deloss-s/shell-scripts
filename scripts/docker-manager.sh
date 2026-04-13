@@ -25,11 +25,17 @@ print_header() {
     echo "  ║           Docker Manager                      ║"
     echo "  ╚═══════════════════════════════════════════════╝"
     echo -e "${NC}"
-    local running
-    running=$(docker ps -q 2>/dev/null | wc -l)
-    local total
-    total=$(docker ps -aq 2>/dev/null | wc -l)
-    echo -e "  Containers: ${GREEN}$running running${NC} / $total total"
+    local total=0 running=0
+    while IFS= read -r dir; do
+        [ -z "$dir" ] && continue
+        local compose
+        compose=$(get_compose_file "$dir")
+        local cnt
+        cnt=$(docker compose -f "$compose" ps -q 2>/dev/null | wc -l)
+        ((total++))
+        [ "$cnt" -gt 0 ] && ((running++))
+    done < <(get_services)
+    echo -e "  Services: ${GREEN}$running up${NC} / $total total"
     echo ""
 }
 
@@ -58,7 +64,9 @@ get_services() {
     find "$DOCKER_ROOT" -mindepth 1 -maxdepth 1 -type d \
         ! -path "$JUNK_DIR" \
         ! -path "$JUNK_DIR/*" | sort | while read -r dir; do
-        [ -f "$dir/docker-compose.yml" ] || [ -f "$dir/docker-compose.yaml" ] && echo "$dir"
+        if [ -f "$dir/docker-compose.yml" ] || [ -f "$dir/docker-compose.yaml" ]; then
+            echo "$dir"
+        fi
     done
 }
 
@@ -120,7 +128,8 @@ pick_service() {
         return 1
     }
 
-    eval "$varname='$target'"
+    _SELECTED_DIR="$target"
+    eval "$varname=\"\$target\""
     return 0
 }
 
@@ -268,9 +277,9 @@ service_up() {
     compose=$(get_compose_file "$dir")
     print_section "1.1.1" "Service › $name › Up (docker-compose.yml)"
     info "Starting $name..."
-    cd "$dir" && docker compose up -d
+    docker compose -f "$compose" up -d
     echo ""
-    docker compose ps
+    docker compose -f "$compose" ps
     pause
 }
 
@@ -288,7 +297,7 @@ service_down() {
         pause
         return
     }
-    cd "$dir" && docker compose down
+    docker compose -f "$compose" down
     ok "$name stopped"
     pause
 }
@@ -297,11 +306,13 @@ service_restart() {
     local dir=$1
     local name
     name=$(basename "$dir")
+    local compose
+    compose=$(get_compose_file "$dir")
     print_section "1.1.3" "Service › $name › Restart (docker-compose.yml)"
     info "Restarting $name..."
-    cd "$dir" && docker compose restart
+    docker compose -f "$compose" restart
     echo ""
-    docker compose ps
+    docker compose -f "$compose" ps
     pause
 }
 
@@ -309,10 +320,12 @@ service_logs() {
     local dir=$1
     local name
     name=$(basename "$dir")
+    local compose
+    compose=$(get_compose_file "$dir")
     print_section "1.1.4" "Service › $name › Logs (docker-compose.yml)"
     info "Showing last 50 lines (q to exit)"
     echo ""
-    cd "$dir" && docker compose logs --tail=50 --follow
+    docker compose -f "$compose" logs --tail=50 --follow
     pause
 }
 
@@ -320,9 +333,11 @@ service_status() {
     local dir=$1
     local name
     name=$(basename "$dir")
+    local compose
+    compose=$(get_compose_file "$dir")
     print_section "1.1.5" "Service › $name › Status (docker-compose.yml)"
     echo ""
-    cd "$dir" && docker compose ps
+    docker compose -f "$compose" ps
     pause
 }
 
@@ -330,6 +345,8 @@ service_pull() {
     local dir=$1
     local name
     name=$(basename "$dir")
+    local compose
+    compose=$(get_compose_file "$dir")
     print_section "1.1.6" "Service › $name › Pull & recreate (docker-compose.yml)"
     echo -ne "  Pull new images and recreate containers for $name? (y/n): "
     read confirm
@@ -339,10 +356,10 @@ service_pull() {
         return
     }
     info "Pulling images..."
-    cd "$dir" && docker compose pull
+    docker compose -f "$compose" pull
     echo ""
     info "Recreating containers..."
-    docker compose up -d --force-recreate
+    docker compose -f "$compose" up -d --force-recreate
     ok "Done"
     pause
 }
@@ -493,7 +510,7 @@ service_edit() {
             if [ -n "$compose" ]; then
                 read -p "  Restart service to apply changes? (y/n): " restart
                 if [ "$restart" = "y" ]; then
-                    cd "$root_dir" && docker compose restart
+                    docker compose -f "$(get_compose_file "$root_dir")" restart
                     ok "Restarted"
                 fi
             fi
@@ -502,11 +519,11 @@ service_edit() {
 }
 
 compose_choose_service() {
-    local selected_dir=""
-
     while true; do
         print_section "1.1" "Containers › Choose service"
-        pick_service selected_dir || return
+        _SELECTED_DIR=""
+        pick_service _SELECTED_DIR || return
+        local selected_dir="$_SELECTED_DIR"
 
         # Остаёмся в цикле выбора сервиса — menu_service возвращает сюда
         while true; do
@@ -562,7 +579,7 @@ all_up() {
         local compose
         compose=$(get_compose_file "$dir")
         echo -ne "  ${CYAN}$name${NC}... "
-        if cd "$dir" && docker compose up -d 2>/dev/null; then
+        if docker compose -f "$compose" up -d 2>/dev/null; then
             echo -e "${GREEN}up${NC}"
         else
             echo -e "${RED}failed${NC}"
@@ -591,7 +608,7 @@ all_down() {
         local name
         name=$(basename "$dir")
         echo -ne "  ${CYAN}$name${NC}... "
-        if cd "$dir" && docker compose down 2>/dev/null; then
+        if docker compose -f "$compose" down 2>/dev/null; then
             echo -e "${GREEN}down${NC}"
         else
             echo -e "${RED}failed${NC}"
@@ -704,7 +721,7 @@ compose_delete() {
     compose=$(get_compose_file "$target")
     if [ -n "$compose" ]; then
         info "Stopping containers..."
-        cd "$target" && docker compose down 2>/dev/null &&
+        docker compose -f "$(get_compose_file "$target")" down 2>/dev/null &&
             ok "Containers stopped" ||
             warn "Could not stop containers (may already be down)"
     fi
@@ -835,7 +852,7 @@ junk_move_to() {
     compose=$(get_compose_file "$target")
     if [ -n "$compose" ]; then
         info "Stopping containers..."
-        cd "$target" && docker compose down 2>/dev/null &&
+        docker compose -f "$(get_compose_file "$target")" down 2>/dev/null &&
             ok "Containers stopped" ||
             warn "Could not stop containers (may already be down)"
     fi
